@@ -1,7 +1,8 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { Redirect, Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Feather from '@expo/vector-icons/Feather';
 import { COLORS } from "../../constants/Colors";
+import SimpleLineIcons from "@expo/vector-icons/SimpleLineIcons";
 
 const TabsLayout = () => {
   const { isSignedIn, isLoaded } = useAuth();
@@ -33,22 +34,35 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Recipes",
-          tabBarIcon: ({ color, size }) => <Ionicons name="restaurant" size={size} color={color} />,
+          title: "Dashboard",
+          tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="products"
         options={{
-          title: "Search",
-          tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
+          title: "Products",
+          tabBarIcon: ({ color, size }) => <Feather name="box" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="favorites"
+        name="sales"
         options={{
-          title: "Favorites",
-          tabBarIcon: ({ color, size }) => <Ionicons name="heart" size={size} color={color} />,
+          title: "Sales",
+          tabBarIcon: ({ color, size }) => <Feather name="shopping-cart" size={size} color={color} />,
+        }}
+          />
+          <Tabs.Screen
+        name="customers"
+        options={{
+          title: "Customers",
+            tabBarIcon: ({ color, size }) => <SimpleLineIcons name = "people" size = { size } color = { color } />,
+        }}
+      /><Tabs.Screen
+        name="reports"
+        options={{
+          title: "Reports",
+          tabBarIcon: ({ color, size }) => <Feather name="heart" size={size} color={color} />,
         }}
       />
     </Tabs>
