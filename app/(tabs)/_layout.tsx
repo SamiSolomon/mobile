@@ -3,13 +3,13 @@ import { Redirect, Tabs } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
 import { COLORS } from "../../constants/Colors";
 import SimpleLineIcons from "@expo/vector-icons/SimpleLineIcons";
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 const TabsLayout = () => {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn} = useAuth();
 
-  if (!isLoaded) return null;
 
-  if (!isSignedIn) return <Redirect href={"/(auth)/sign-in"} />;
+  if (!isSignedIn) return <Redirect href={"/(auth)/sign-up"} />;
 
   return (
     <Tabs
@@ -62,7 +62,7 @@ const TabsLayout = () => {
         name="reports"
         options={{
           title: "Reports",
-          tabBarIcon: ({ color, size }) => <Feather name="heart" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="google-analytics" size={size} color={color} />,
         }}
       />
     </Tabs>

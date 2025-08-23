@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier":"com.galaxies.firebase"
+      "bundleIdentifier": "com.galaxies.firebase"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,13 +27,15 @@
     },
     "plugins": [
       "expo-router",
-      [ 
-     "expo-build-properties",
-             {
-             "ios": {
-              "useFrameworks": "static"
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
         }
-   }]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
