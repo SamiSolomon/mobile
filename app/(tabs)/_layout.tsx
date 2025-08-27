@@ -2,7 +2,6 @@ import { useAuth } from "@clerk/clerk-expo";
 import { Redirect, Tabs } from "expo-router";
 import Feather from '@expo/vector-icons/Feather';
 import { COLORS } from "../../constants/Colors";
-import SimpleLineIcons from "@expo/vector-icons/SimpleLineIcons";
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 const TabsLayout = () => {
@@ -52,13 +51,7 @@ const TabsLayout = () => {
           tabBarIcon: ({ color, size }) => <Feather name="shopping-cart" size={size} color={color} />,
         }}
           />
-          <Tabs.Screen
-        name="customers"
-        options={{
-          title: "Customers",
-            tabBarIcon: ({ color, size }) => <SimpleLineIcons name = "people" size = { size } color = { color } />,
-        }}
-      /><Tabs.Screen
+      <Tabs.Screen
         name="reports"
         options={{
           title: "Reports",
