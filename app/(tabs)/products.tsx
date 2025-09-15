@@ -38,15 +38,15 @@ export default function ProductsScreen() {
     setModalOpen(true);
   }
 
-  async function handleSubmit(form: any) {
+  function handleSubmit(form: any) {
     if (form.id) {
-      await updateProduct(form);
+      updateProduct(form);
     } else {
-      await insertProduct(form);
+      insertProduct(form);
     }
     setModalOpen(false);
     setEditing(null);
-    await refresh();
+     refresh();
   }
 
   // Derived lists
@@ -108,7 +108,6 @@ export default function ProductsScreen() {
         renderItem={({ item }) => (
           <ProductCard
             name={item.name}
-            unitSize={item.unitSize}
             pricePerDozen={item.pricePerDozen}
             costPerDozen={item.costPerDozen}
             stockPieces={item.stockPieces}
