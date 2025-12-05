@@ -1,5 +1,4 @@
 import { useSignIn } from "@clerk/clerk-expo";
-import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   View,
@@ -16,7 +15,6 @@ import { authStyles } from "../../assets/styles/auth.styles";
 import { COLORS } from "../../constants/Colors";
 
 const SignInScreen = () => {
-  const router = useRouter();
   const { signIn, setActive, isLoaded } = useSignIn();
 
   const [email, setEmail] = useState("");
@@ -113,7 +111,7 @@ const SignInScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Submit Button */}
+          {/* Sign In Button */}
           <TouchableOpacity
             style={[authStyles.authButton, loading && authStyles.buttonDisabled]}
             onPress={handleSignIn}
@@ -125,16 +123,16 @@ const SignInScreen = () => {
             </Text>
           </TouchableOpacity>
 
-          {/* Sign Up Link */}
-          <TouchableOpacity
-            style={authStyles.linkContainer}
-            onPress={() => router.push("/(auth)/sign-up")}
+          {/* Note: Sign Up removed */}
+          <Text
+            style={{
+              color: COLORS.textLight,
+              textAlign: "center",
+              marginTop: 15,
+            }}
           >
-            <Text style={authStyles.linkText}>
-              Don’t have an account?{" "}
-              <Text style={authStyles.link}>Sign up</Text>
-            </Text>
-          </TouchableOpacity>
+            Need an account? Contact the administrator.
+          </Text>
         </View>
       </KeyboardAwareScrollView>
     </View>
