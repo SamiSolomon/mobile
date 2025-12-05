@@ -4,7 +4,6 @@ import { Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingVi
 type FormShape = {
   id?: number;
   name: string;
-  unitSize: number;
   pricePerDozen: number;
   costPerDozen?: number;
   stockPieces: number;
@@ -22,9 +21,8 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
   const [form, setForm] = useState<FormShape>({
     id: undefined,
     name: "",
-    unitSize: 12,
     pricePerDozen: 0,
-    costPerDozen: undefined,
+    costPerDozen: 0,
     stockPieces: 0,
     lowStockThreshold: 12,
   });
@@ -35,7 +33,6 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
         ...prev,
         id: initial?.id,
         name: initial?.name ?? "",
-        unitSize: initial?.unitSize ?? 12,
         pricePerDozen: initial?.pricePerDozen ?? 0,
         costPerDozen: initial?.costPerDozen ?? undefined,
         stockPieces: initial?.stockPieces ?? 0,
@@ -44,10 +41,10 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
     }
   }, [visible, initial]);
 
-  const disabled = !form.name.trim() || form.pricePerDozen <= 0 || form.unitSize <= 0;
+  const disabled = !form.name.trim() || form.pricePerDozen <= 0;
 
   const update = (k: keyof FormShape, v: string) => {
-    const numeric = ["unitSize","pricePerDozen","costPerDozen","stockPieces","lowStockThreshold"].includes(k as string);
+    const numeric = ["pricePerDozen","costPerDozen","stockPieces","lowStockThreshold"].includes(k as string);
     setForm(f => ({ ...f, [k]: numeric ? Number(v) || 0 : v }));
   };
 
@@ -65,29 +62,6 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
               placeholder="Fresh Eggs (Large)"
               style={styles.input}
             />
-          </View>
-
-          <View style={styles.grid2}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Pieces/Dozen</Text>
-              <TextInput
-                keyboardType="numeric"
-                value={String(form.unitSize)}
-                onChangeText={(t)=>update("unitSize", t)}
-                placeholder="12"
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.col}>
-              <Text style={styles.label}>Low Stock @ (pcs)</Text>
-              <TextInput
-                keyboardType="numeric"
-                value={String(form.lowStockThreshold)}
-                onChangeText={(t)=>update("lowStockThreshold", t)}
-                placeholder="12"
-                style={styles.input}
-              />
-            </View>
           </View>
 
           <View style={styles.grid2}>
@@ -113,8 +87,9 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
             </View>
           </View>
 
-          <View style={styles.row}>
-            <Text style={styles.label}>Stock (pcs)</Text>
+          <View style={styles.grid2}>
+            <View style={styles.col}>
+            <Text style={styles.label}>Stock</Text>
             <TextInput
               keyboardType="numeric"
               value={String(form.stockPieces)}
@@ -122,7 +97,20 @@ export default function ProductFormModal({ visible, initial, onClose, onSubmit }
               placeholder="0"
               style={styles.input}
             />
+            </View>
+            
+            <View style={styles.col}>
+              <Text style={styles.label}>Low Stock</Text>
+              <TextInput
+                keyboardType="numeric"
+                value={String(form.lowStockThreshold)}
+                onChangeText={(t)=>update("lowStockThreshold", t)}
+                placeholder="12"
+                style={styles.input}
+              />
+            </View>
           </View>
+          
 
           <View style={styles.actions}>
             <Pressable onPress={onClose} style={[styles.btn, styles.cancel]}>
@@ -147,7 +135,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: "#fff", padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
   title: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
   row: { marginBottom: 12 },
-  label: { fontSize: 13, color: "#555", marginBottom: 6 },
+  label: { fontSize: 16, fontWeight: "600", color: "#111827", marginTop: 2  },
   input: {
     borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16,
     backgroundColor: "#FAFAFA",

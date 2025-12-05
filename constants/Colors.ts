@@ -16,6 +16,7 @@ const coffeeTheme = {
 
 const forestTheme = {
   primary: "#2E7D32",
+  primaryDark: "#5B0AA3", // darker shade for active tab
   background: "#E8F5E9",
   text: "#1B5E20",
   border: "#C8E6C9",
@@ -71,6 +72,7 @@ const mintTheme = {
 
 const midnightTheme = {
   primary: "#2C3E50",
+  primaryDark: "#5B0AA3", // darker shade for active tab
   background: "#F4F6F7",
   text: "#1A2530",
   border: "#D5D8DC",
@@ -82,6 +84,7 @@ const midnightTheme = {
 
 const roseGoldTheme = {
   primary: "#E0BFB8",
+  primaryDark: "#5B0AA3", // darker shade for active tab
   background: "#FDF6F5",
   text: "#4A3B38",
   border: "#F2D9D5",

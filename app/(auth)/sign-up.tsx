@@ -124,7 +124,7 @@ const SignUpScreen = () => {
             </TouchableOpacity>
 
             {/* Sign In Link */}
-            <TouchableOpacity style={authStyles.linkContainer} onPress={() => router.back()}>
+            <TouchableOpacity style={authStyles.linkContainer} onPress={() => router.push("/(auth)/sign-in")}>
               <Text style={authStyles.linkText}>
                 Already have an account? <Text style={authStyles.link}>Sign In</Text>
               </Text>
