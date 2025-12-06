@@ -1,10 +1,29 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, TextInput, StyleSheet } from "react-native";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  TextInput,
+  StyleSheet,
+  RefreshControl,
+} from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import ProductCard from "../../components/productCard";
 import ProductFormModal from "../../components/productform";
-import { initDB, getProducts, insertProduct, updateProduct, type Product } from "../db/product";
-import { router } from "expo-router";
+import {
+  initDB,
+  getProducts,
+  insertProduct,
+  updateProduct,
+  type Product,
+} from "../db/product";
+import { router, useFocusEffect } from "expo-router";
 
 type Filter = "all" | "low" | "out";
 
@@ -17,18 +36,35 @@ export default function ProductsScreen() {
   const [editing, setEditing] = useState<Product | null>(null);
 
   const [isFocused, setIsFocused] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // ✅ for pull-to-refresh
 
-  useEffect(() => {
-    (async () => {
-      initDB();
-      await refresh();
-    })();
-  }, []);
-
-  async function refresh() {
+  // ✅ wrapped in useCallback so we can reuse in focus + refresh
+  const refresh = useCallback(async () => {
     const list = await getProducts();
     setProducts(list);
-  }
+  }, []);
+
+  // ✅ init DB once, then load products
+  useEffect(() => {
+    (async () => {
+      await initDB();
+      await refresh();
+    })();
+  }, [refresh]);
+
+  // ✅ re-run refresh when screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  // ✅ pull-to-refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
 
   function openAdd() {
     setEditing(null);
@@ -40,15 +76,16 @@ export default function ProductsScreen() {
     setModalOpen(true);
   }
 
-  function handleSubmit(form: any) {
+  async function handleSubmit(form: any) {
+    // ✅ treat DB operations as async & refresh after
     if (form.id) {
-      updateProduct(form);
+      await updateProduct(form);
     } else {
-      insertProduct(form);
+      await insertProduct(form);
     }
     setModalOpen(false);
     setEditing(null);
-    refresh();
+    await refresh();
   }
 
   // Derived lists
@@ -60,7 +97,9 @@ export default function ProductsScreen() {
     }
     if (filter === "low") {
       data = data.filter(
-        (p) => p.stockPieces > 0 && p.stockPieces <= (p.lowStockThreshold ?? 12)
+        (p) =>
+          p.stockPieces > 0 &&
+          p.stockPieces <= (p.lowStockThreshold ?? 12)
       );
     } else if (filter === "out") {
       data = data.filter((p) => p.stockPieces === 0);
@@ -70,7 +109,9 @@ export default function ProductsScreen() {
 
   const counts = useMemo(() => {
     const low = products.filter(
-      (p) => p.stockPieces > 0 && p.stockPieces <= (p.lowStockThreshold ?? 12)
+      (p) =>
+        p.stockPieces > 0 &&
+        p.stockPieces <= (p.lowStockThreshold ?? 12)
     ).length;
     const out = products.filter((p) => p.stockPieces === 0).length;
     return { all: products.length, low, out };
@@ -81,13 +122,20 @@ export default function ProductsScreen() {
       {/* Header */}
       <Text style={styles.title}>Products</Text>
       <Text style={styles.subtitle}>
-        {products.length} product{products.length === 1 ? "" : "s"} in inventory
+        {products.length} product
+        {products.length === 1 ? "" : "s"} in inventory
       </Text>
 
       {/* Search + Add */}
       <View style={styles.searchRow}>
-        <View style={[styles.search, isFocused && styles.searchFocused]}>
-          <MaterialCommunityIcons name="magnify" size={20} color="#6B7280" />
+        <View
+          style={[styles.search, isFocused && styles.searchFocused]}
+        >
+          <MaterialCommunityIcons
+            name="magnify"
+            size={20}
+            color="#6B7280"
+          />
           <TextInput
             placeholder="Search products..."
             value={query}
@@ -106,9 +154,21 @@ export default function ProductsScreen() {
 
       {/* Filter chips */}
       <View style={styles.chips}>
-        <Chip label={`All (${counts.all})`} active={filter === "all"} onPress={() => setFilter("all")} />
-        <Chip label={`Low Stock (${counts.low})`} active={filter === "low"} onPress={() => setFilter("low")} />
-        <Chip label={`Out of Stock (${counts.out})`} active={filter === "out"} onPress={() => setFilter("out")} />
+        <Chip
+          label={`All (${counts.all})`}
+          active={filter === "all"}
+          onPress={() => setFilter("all")}
+        />
+        <Chip
+          label={`Low Stock (${counts.low})`}
+          active={filter === "low"}
+          onPress={() => setFilter("low")}
+        />
+        <Chip
+          label={`Out of Stock (${counts.out})`}
+          active={filter === "out"}
+          onPress={() => setFilter("out")}
+        />
       </View>
 
       {/* List */}
@@ -131,11 +191,17 @@ export default function ProductsScreen() {
         ListEmptyComponent={
           <View style={{ padding: 24 }}>
             <Text style={{ color: "#6B7280" }}>
-              No products yet. Tap <Text style={{ fontWeight: "700" }}>Add</Text> to create your first product.
+              No products yet. Tap{" "}
+              <Text style={{ fontWeight: "700" }}>Add</Text> to create
+              your first product.
             </Text>
           </View>
         }
         contentContainerStyle={{ paddingBottom: 40 }}
+        // ✅ pull-to-refresh hook up
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       />
 
       {/* Add/Edit Modal */}
@@ -163,8 +229,18 @@ function Chip({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, active && styles.chipActive]}
+    >
+      <Text
+        style={[
+          styles.chipText,
+          active && styles.chipTextActive,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -199,12 +275,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: "#E5E7EB", // default gray
+    borderColor: "#E5E7EB",
     paddingHorizontal: 10,
     height: 44,
   },
   searchFocused: {
-    borderColor: "#16A34A", // green when focused
+    borderColor: "#16A34A",
   },
   searchInput: { flex: 1, fontSize: 16 },
   addButton: {
@@ -217,7 +293,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  addButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  addButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
   chips: {
     flexDirection: "row",
     gap: 8,
