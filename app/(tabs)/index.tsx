@@ -1,14 +1,20 @@
 // src/screens/DashboardScreen.tsx
-import React, { useEffect, useState, ComponentProps } from "react";
+import React, {
+  useEffect,
+  useState,
+  ComponentProps,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { getSalesWithDetails, Sale } from "../db/sales";
 import { getProducts, Product } from "../db/product";
 
@@ -31,14 +37,14 @@ export default function DashboardScreen() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [refreshing, setRefreshing] = useState(false); // ✅ for pull-to-refresh
 
-  useEffect(() => {
-    refresh();
-  }, []);
+  // ✅ Wrap refresh in useCallback so we can reuse it cleanly
+  const refresh = useCallback(async () => {
+    // Treat DB calls as async, works whether they return promises or not
+    const s = await getSalesWithDetails();
+    const p = await getProducts();
 
-  async function refresh() {
-    const s = getSalesWithDetails();
-    const p = getProducts();
     setSales(s);
     setProducts(p);
 
@@ -62,7 +68,10 @@ export default function DashboardScreen() {
       .reduce((sum, x) => sum + (x.totalCents - x.paidCents), 0);
 
     // --- Recent Sales (last 3) ---
-    setRecentSales(s.slice(0, 3));
+    const sortedSales = [...s].sort(
+      (a, b) => (b.createdAt as any) - (a.createdAt as any)
+    );
+    setRecentSales(sortedSales.slice(0, 3));
 
     // --- Alerts ---
     const stockAlerts: string[] = [];
@@ -85,7 +94,7 @@ export default function DashboardScreen() {
 
     setAlerts(stockAlerts);
 
-    // --- Build Metrics (today only) ---
+    // --- Build Metrics (currently using all sales, label as Today for UI) ---
     setMetrics([
       {
         label: "Today's Sales",
@@ -121,12 +130,34 @@ export default function DashboardScreen() {
         color: "#111827",
       },
     ]);
-  }
+  }, []);
+
+  // ✅ Initial load
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // ✅ Refetch whenever this screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  // ✅ Pull-to-refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: 80 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
       {/* Header */}
       <Text style={styles.title}>Dashboard</Text>
@@ -138,12 +169,27 @@ export default function DashboardScreen() {
           <View key={m.label} style={styles.card}>
             <View style={styles.headerRow}>
               <Text style={styles.cardLabel}>{m.label}</Text>
-              <MaterialCommunityIcons name={m.icon} size={18} color="#6B7280" />
+              <MaterialCommunityIcons
+                name={m.icon}
+                size={18}
+                color="#6B7280"
+              />
             </View>
             <Text style={styles.cardValue}>{m.value}</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: 2,
+              }}
+            >
               {m.sub && (
-                <Text style={[styles.cardSub, { color: m.subColor || "#6B7280" }]}>
+                <Text
+                  style={[
+                    styles.cardSub,
+                    { color: m.subColor || "#6B7280" },
+                  ]}
+                >
                   {m.sub}
                 </Text>
               )}
@@ -187,86 +233,107 @@ export default function DashboardScreen() {
           </Text>
         </Pressable>
       </View>
-{/* Recent Sales */}
-<View style={styles.section}>
-  <View style={styles.sectionHeader}>
-    <Feather name="shopping-cart" size={20} color="#111827" />
-    <Text style={styles.sectionTitle}>Recent Sales</Text>
-  </View>
 
-  {recentSales.length === 0 ? (
-    <Text style={styles.muted}>No sales yet.</Text>
-  ) : (
-    recentSales.map((sale) => (
-      <Pressable
-        key={sale.id}
-        style={styles.transactionRow}
-        onPress={() => router.push("/(tabs)/sales")}
-      >
-        <View>
-          <Text style={styles.transactionName}>
-            {sale.customerName ?? "Cash Sale"}
-          </Text>
-          <Text style={styles.transactionSub}>
-            {sale.items.map((i: any) => `${i.dozens} dozen ${i.product.name}`).join(", ")}
-          </Text>
+      {/* Recent Sales */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Feather name="shopping-cart" size={20} color="#111827" />
+          <Text style={styles.sectionTitle}>Recent Sales</Text>
         </View>
-        <Text style={styles.transactionAmount}>{money(sale.totalCents)}</Text>
-      </Pressable>
-    ))
-  )}
 
-  <Pressable
-    style={styles.viewAll}
-    onPress={() => router.push("/(tabs)/reports")}
-  >
-    <MaterialCommunityIcons
-      name="chart-box-outline"
-      size={18}
-      color="#111827"
-    />
-    <Text style={{ marginLeft: 6, fontWeight: "600", color: "#111827" }}>
-      View All Sales
-    </Text>
-  </Pressable>
-</View>
+        {recentSales.length === 0 ? (
+          <Text style={styles.muted}>No sales yet.</Text>
+        ) : (
+          recentSales.map((sale) => (
+            <Pressable
+              key={sale.id}
+              style={styles.transactionRow}
+              onPress={() => router.push("/(tabs)/sales")}
+            >
+              <View>
+                <Text style={styles.transactionName}>
+                  {sale.customerName ?? "Cash Sale"}
+                </Text>
+                <Text style={styles.transactionSub}>
+                  {sale.items
+                    .map(
+                      (i: any) =>
+                        `${i.dozens} dozen ${i.product.name}`
+                    )
+                    .join(", ")}
+                </Text>
+              </View>
+              <Text style={styles.transactionAmount}>
+                {money(sale.totalCents)}
+              </Text>
+            </Pressable>
+          ))
+        )}
 
-
-
-     {/* Alerts & Notifications */}
-<View style={styles.section}>
-  <View style={styles.sectionHeader}>
-    <MaterialCommunityIcons name="alert-outline" size={20} color="#111827" />
-    <Text style={styles.sectionTitle}>Alerts & Notifications</Text>
-  </View>
-
-  {alerts.length === 0 ? (
-    <Text style={styles.muted}>No alerts</Text>
-  ) : (
-    <View style={{ maxHeight: 220 }}>
-      {alerts.map((a, idx) => (
-        <View key={idx} style={styles.transactionRow}>
-          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-            <MaterialCommunityIcons
-              name="alert-outline"
-              size={18}
-              color="#F59E0B"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.transactionSub}>{a}</Text>
-          </View>
-          <Pressable
-            style={styles.alertBtn}
-            onPress={() => router.push("/(tabs)/products")}
+        <Pressable
+          style={styles.viewAll}
+          onPress={() => router.push("/(tabs)/reports")}
+        >
+          <MaterialCommunityIcons
+            name="chart-box-outline"
+            size={18}
+            color="#111827"
+          />
+          <Text
+            style={{
+              marginLeft: 6,
+              fontWeight: "600",
+              color: "#111827",
+            }}
           >
-            <Text style={styles.alertBtnText}>Inventory</Text>
-          </Pressable>
-        </View>
-      ))}
-    </View>
-  )}
-</View>
+            View All Sales
+          </Text>
+        </Pressable>
+      </View>
 
+      {/* Alerts & Notifications */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <MaterialCommunityIcons
+            name="alert-outline"
+            size={20}
+            color="#111827"
+          />
+          <Text style={styles.sectionTitle}>Alerts & Notifications</Text>
+        </View>
+
+        {alerts.length === 0 ? (
+          <Text style={styles.muted}>No alerts</Text>
+        ) : (
+          <View style={{ maxHeight: 220 }}>
+            {alerts.map((a, idx) => (
+              <View key={idx} style={styles.transactionRow}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    flex: 1,
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="alert-outline"
+                    size={18}
+                    color="#F59E0B"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.transactionSub}>{a}</Text>
+                </View>
+                <Pressable
+                  style={styles.alertBtn}
+                  onPress={() => router.push("/(tabs)/products")}
+                >
+                  <Text style={styles.alertBtnText}>Inventory</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -357,22 +424,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // alerts
   alertBtn: {
-  backgroundColor: "#E5E7EB",
+    backgroundColor: "#E5E7EB",
     paddingHorizontal: 10,
-  textAlign: "center",
-  alignItems: "center",
-  justifyContent:"center",
-  paddingVertical: 4,
-  borderRadius: 6,
-  marginLeft: 8,
-},
-alertBtnText: {
-  fontSize: 12,
-  fontWeight: "600",
-  color: "#111827",
-},
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  alertBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#111827",
+  },
 
   alertCard: {
     backgroundColor: "#F9FAFB",
@@ -391,38 +456,38 @@ alertBtnText: {
     fontSize: 14,
     flexShrink: 1,
   },
+
   saleCard: {
-  backgroundColor: "#F9FAFB",
-  borderRadius: 8,
-  paddingVertical: 10,
-  paddingHorizontal: 12,
-  borderWidth: 1,
-  borderColor: "#E5E7EB",
-  marginBottom: 10,
-},
-saleRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 4,
-},
-saleName: { fontSize: 15, fontWeight: "600", color: "#111827" },
-saleAmount: { fontSize: 15, fontWeight: "700", color: "#16A34A" },
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 10,
+  },
+  saleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  saleName: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  saleAmount: { fontSize: 15, fontWeight: "700", color: "#16A34A" },
   saleSub: { fontSize: 12, color: "#6B7280" },
-muted: { color: "#999", fontStyle: "italic", padding: 4 },
 
-transactionRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  backgroundColor: "#fafafa",
-  padding: 12,
-  borderRadius: 8,
-  marginBottom: 8,
-  minHeight: 60, // 👈 ensures alerts are same height as sales
+  muted: { color: "#999", fontStyle: "italic", padding: 4 },
 
-},
-transactionName: { fontSize: 15, fontWeight: "600", color: "#111827" },
-transactionSub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-transactionAmount: { fontSize: 15, fontWeight: "700", color: "#16A34A" },
-
+  transactionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: "#fafafa",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    minHeight: 60,
+  },
+  transactionName: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  transactionSub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  transactionAmount: { fontSize: 15, fontWeight: "700", color: "#16A34A" },
 });
