@@ -1,5 +1,11 @@
 // src/screens/SalesScreen.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   View,
   Text,
@@ -12,7 +18,9 @@ import {
   KeyboardAvoidingView,
   Modal,
   ScrollView,
+  RefreshControl,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import {
   getProductsForSale,
   createSale,
@@ -30,11 +38,15 @@ import ListFooter from "../../components/listFooter";
 import dayjs from "dayjs";
 
 type Mode = "cash" | "credit";
-const money = (cents: number) => `ETB ${(cents).toFixed(2)}`;
+const money = (cents: number) => `ETB ${cents.toFixed(2)}`;
 export { money };
 
 function genId(prefix = "") {
-  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  return (
+    prefix +
+    Date.now().toString(36) +
+    Math.random().toString(36).slice(2, 8)
+  );
 }
 
 type Cart = {
@@ -59,7 +71,9 @@ export default function SalesScreen() {
   const [customerName, setCustomerName] = useState<string>("");
   const [history, setHistory] = useState<any[]>([]);
   const [clickedProductId, setClickedProductId] = useState<string | null>(null);
-  const [selectedSale, setSelectedSale] = useState<any | null>(null); // NEW
+  const [selectedSale, setSelectedSale] = useState<any | null>(null);
+
+  const [refreshing, setRefreshing] = useState(false); // ✅ for pull-to-refresh
 
   function rowToForSale(p: ProductRow): ProductForSale {
     return {
@@ -70,12 +84,16 @@ export default function SalesScreen() {
     };
   }
 
-  const refreshProducts = useCallback(async (query = "") => {
-    if (!query) return;
-    const rows = getProductsForSale(query);
-    const productsForSale = rows.map(rowToForSale);
-    setSuggestions(productsForSale);
-  }, []);
+  // ✅ FIX: actually await getProductsForSale
+  const refreshProducts = useCallback(
+    async (query = "") => {
+      if (!query) return;
+      const rows = await getProductsForSale(query);
+      const productsForSale = rows.map(rowToForSale);
+      setSuggestions(productsForSale);
+    },
+    []
+  );
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
@@ -89,51 +107,75 @@ export default function SalesScreen() {
     setHistory(rows);
   }, []);
 
-  useEffect(() => {
-    refreshHistory();
-  }, [refreshHistory]);
+  // ✅ refresh when screen is focused (when you come back to it)
+  useFocusEffect(
+    useCallback(() => {
+      refreshHistory();
+    }, [refreshHistory])
+  );
+
+  // ✅ handler for pull-to-refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshHistory();
+    // optionally also refresh product suggestions based on current search
+    if (search.trim()) {
+      await refreshProducts(search.trim());
+    }
+    setRefreshing(false);
+  }, [refreshHistory, refreshProducts, search]);
 
   // Stable references
   const getActiveCart = useCallback(() => {
     return carts.find((c) => c.id === activeCartId);
   }, [carts, activeCartId]);
 
-  const createNewCart = useCallback((name?: string) => {
-    const id = genId("cart_");
-    const cart: Cart = { id, name: name ?? `Cart ${carts.length + 1}`, items: [] };
-    setCarts((prev) => [...prev, cart]);
-    setActiveCartId(id);
-    return cart;
-  }, [carts, setActiveCartId]);
+  const createNewCart = useCallback(
+    (name?: string) => {
+      const id = genId("cart_");
+      const cart: Cart = {
+        id,
+        name: name ?? `Cart ${carts.length + 1}`,
+        items: [],
+      };
+      setCarts((prev) => [...prev, cart]);
+      setActiveCartId(id);
+      return cart;
+    },
+    [carts, setActiveCartId]
+  );
 
-  const addToCartForId = useCallback((cartId: string, p: ProductForSale) => {
-    const productId = p.id;
-    setCarts((prev) =>
-      prev.map((cart) => {
-        if (cart.id !== cartId) return cart;
-        const existing = cart.items.find((it) => it.productId === productId);
-        if (existing) {
-          return {
-            ...cart,
-            items: cart.items.map((it) =>
-              it.productId === productId
-                ? { ...it, qty_pieces: it.qty_pieces + p.pack_size }
-                : it
-            ),
-          };
-        } else {
-          const line: CartLine = {
-            productId: productId,
-            name: p.name,
-            pack_size: p.pack_size,
-            price_per_dozen_cents: p.default_selling_price,
-            qty_pieces: p.pack_size,
-          };
-          return { ...cart, items: [...cart.items, line] };
-        }
-      })
-    );
-  }, [setCarts]);
+  const addToCartForId = useCallback(
+    (cartId: string, p: ProductForSale) => {
+      const productId = p.id;
+      setCarts((prev) =>
+        prev.map((cart) => {
+          if (cart.id !== cartId) return cart;
+          const existing = cart.items.find((it) => it.productId === productId);
+          if (existing) {
+            return {
+              ...cart,
+              items: cart.items.map((it) =>
+                it.productId === productId
+                  ? { ...it, qty_pieces: it.qty_pieces + p.pack_size }
+                  : it
+              ),
+            };
+          } else {
+            const line: CartLine = {
+              productId: productId,
+              name: p.name,
+              pack_size: p.pack_size,
+              price_per_dozen_cents: p.default_selling_price,
+              qty_pieces: p.pack_size,
+            };
+            return { ...cart, items: [...cart.items, line] };
+          }
+        })
+      );
+    },
+    [setCarts]
+  );
 
   const addToActiveCart = useCallback(
     (p: ProductForSale) => {
@@ -151,26 +193,31 @@ export default function SalesScreen() {
     [getActiveCart, createNewCart, addToCartForId, setClickedProductId]
   );
 
-  const handleSelectSuggestion = useCallback((p: ProductForSale) => {
-    setProducts((prev) => {
-      if (prev.some((prod) => prod.id === p.id)) return prev;
-      return [...prev, p];
-    });
-    addToActiveCart(p);
-    setSearch("");
-    setSuggestions([]);
-    Keyboard.dismiss();
-  }, [addToActiveCart]);
+  const handleSelectSuggestion = useCallback(
+    (p: ProductForSale) => {
+      setProducts((prev) => {
+        if (prev.some((prod) => prod.id === p.id)) return prev;
+        return [...prev, p];
+      });
+      addToActiveCart(p);
+      setSearch("");
+      setSuggestions([]);
+      Keyboard.dismiss();
+    },
+    [addToActiveCart]
+  );
 
-  // Wrap this function in useCallback
-  const deleteProductFromCombinedCart = useCallback((productId: number) => {
-    setCarts((prev) =>
-      prev.map((cart) => ({
-        ...cart,
-        items: cart.items.filter((item) => item.productId !== productId),
-      }))
-    );
-  }, [setCarts]);
+  const deleteProductFromCombinedCart = useCallback(
+    (productId: number) => {
+      setCarts((prev) =>
+        prev.map((cart) => ({
+          ...cart,
+          items: cart.items.filter((item) => item.productId !== productId),
+        }))
+      );
+    },
+    [setCarts]
+  );
 
   const clearAllCarts = useCallback(() => {
     setCarts([]);
@@ -192,7 +239,13 @@ export default function SalesScreen() {
   const totalCents = useMemo(
     () =>
       combinedLines.reduce(
-        (sum, l) => sum + lineTotalCents(l.qty_pieces, l.price_per_dozen_cents, l.pack_size),
+        (sum, l) =>
+          sum +
+          lineTotalCents(
+            l.qty_pieces,
+            l.price_per_dozen_cents,
+            l.pack_size
+          ),
         0
       ),
     [combinedLines]
@@ -207,54 +260,83 @@ export default function SalesScreen() {
 
   const completeSale = useCallback(async () => {
     if (combinedLines.length === 0) {
-      Alert.alert("Cart empty", "Add at least one item before completing the sale.");
+      Alert.alert(
+        "Cart empty",
+        "Add at least one item before completing the sale."
+      );
       return;
     }
     try {
       const totalCents = combinedLines.reduce(
         (sum, line) =>
-          sum + Math.round((line.qty_pieces / line.pack_size) * line.price_per_dozen_cents),
+          sum +
+          Math.round(
+            (line.qty_pieces / line.pack_size) *
+              line.price_per_dozen_cents
+          ),
         0
       );
-      const paidCents = mode === "cash" ? Math.round(Number(paid || "0")) : 0;
+      const paidCents =
+        mode === "cash" ? Math.round(Number(paid || "0")) : 0;
       const sale: Sale = {
         customerName: customerName.trim() || undefined,
         totalCents,
         paidCents,
         isCredit: mode === "credit",
       };
-      const items: Omit<SaleItem, "saleId">[] = combinedLines.map((line) => ({
-        productId: line.productId,
-        dozens: line.qty_pieces / line.pack_size,
-        lineTotalCents: Math.round((line.qty_pieces / line.pack_size) * line.price_per_dozen_cents),
-      }));
+      const items: Omit<SaleItem, "saleId">[] = combinedLines.map(
+        (line) => ({
+          productId: line.productId,
+          dozens: line.qty_pieces / line.pack_size,
+          lineTotalCents: Math.round(
+            (line.qty_pieces / line.pack_size) *
+              line.price_per_dozen_cents
+          ),
+        })
+      );
       createSale(sale, items);
       Alert.alert("Sale Complete", "Sale saved successfully.");
       clearAllCarts();
       setPaid(0);
       setCustomerName("");
       setMode("cash");
-      await refreshProducts();
       await refreshHistory();
+      if (search.trim()) {
+        await refreshProducts(search.trim());
+      }
     } catch (err: any) {
       Alert.alert("Error", err.message || String(err));
     }
-  }, [combinedLines, paid, mode, customerName, clearAllCarts, refreshProducts, refreshHistory]);
+  }, [
+    combinedLines,
+    paid,
+    mode,
+    customerName,
+    clearAllCarts,
+    refreshHistory,
+    refreshProducts,
+    search,
+  ]);
 
-  const handleDeleteSale = useCallback(async (id: number) => {
-    Alert.alert("Confirm", "Delete sale and revert stock?", [
-      { text: "Cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteSaleAndRevertStock(id);
-          refreshProducts(search);
-          refreshHistory();
+  const handleDeleteSale = useCallback(
+    async (id: number) => {
+      Alert.alert("Confirm", "Delete sale and revert stock?", [
+        { text: "Cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteSaleAndRevertStock(id);
+            await refreshHistory();
+            if (search.trim()) {
+              await refreshProducts(search.trim());
+            }
+          },
         },
-      },
-    ]);
-  }, [refreshProducts, search, refreshHistory]);
+      ]);
+    },
+    [refreshProducts, search, refreshHistory]
+  );
 
   const handleSearchProduct = useCallback(async () => {
     const q = search.trim();
@@ -277,14 +359,17 @@ export default function SalesScreen() {
       return;
     }
     const product = rowToForSale(found[0]);
-    setProducts((prev) => (prev.some((p) => p.id === product.id) ? prev : [...prev, product]));
+    setProducts((prev) =>
+      prev.some((p) => p.id === product.id) ? prev : [...prev, product]
+    );
     addToActiveCart(product);
     setSearch("");
     Keyboard.dismiss();
   }, [search, products, addToActiveCart]);
 
   const isCompleteDisabled =
-    (mode === "cash" && (!paid || Number(paid) <= 0)) || combinedLines.length === 0;
+    (mode === "cash" && (!paid || Number(paid) <= 0)) ||
+    combinedLines.length === 0;
 
   const renderProductItem = useCallback(
     (item: ProductForSale) => {
@@ -295,12 +380,18 @@ export default function SalesScreen() {
         <View key={item.id} style={styles.productCard}>
           <View style={{ flex: 1 }}>
             <Text style={styles.productName}>{item.name}</Text>
-            <Text style={styles.metaText}>{`${dozensAvail} dozens available`}</Text>
+            <Text style={styles.metaText}>
+              {`${dozensAvail} dozens available`}
+            </Text>
           </View>
           <Pressable
             onPress={() => addToActiveCart(item)}
             disabled={disabled}
-            style={[styles.addBtn, clicked && styles.addBtnActive, disabled && styles.addBtnDisabled]}
+            style={[
+              styles.addBtn,
+              clicked && styles.addBtnActive,
+              disabled && styles.addBtnDisabled,
+            ]}
           >
             <Text
               style={[
@@ -313,7 +404,9 @@ export default function SalesScreen() {
             </Text>
           </Pressable>
           <TouchableOpacity
-            onPress={() => setProducts((prev) => prev.filter((p) => p.id !== item.id))}
+            onPress={() =>
+              setProducts((prev) => prev.filter((p) => p.id !== item.id))
+            }
             style={[styles.deleteBtn, { marginLeft: 8 }]}
           >
             <Text style={styles.deleteText}>×</Text>
@@ -326,17 +419,33 @@ export default function SalesScreen() {
 
   const renderCombinedCartItem = useCallback(
     (item: CartLine) => {
-      const lineCents = lineTotalCents(item.qty_pieces, item.price_per_dozen_cents, item.pack_size);
+      const lineCents = lineTotalCents(
+        item.qty_pieces,
+        item.price_per_dozen_cents,
+        item.pack_size
+      );
       const dozens = item.qty_pieces / item.pack_size;
       return (
         <View key={item.productId} style={styles.cartCardItem}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <Text style={styles.cartItemName}>{item.name}</Text>
-            <TouchableOpacity onPress={() => deleteProductFromCombinedCart(item.productId)}>
+            <TouchableOpacity
+              onPress={() =>
+                deleteProductFromCombinedCart(item.productId)
+              }
+            >
               <Text style={styles.deleteText}>🗑</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.unitPrice}>ETB {(item.price_per_dozen_cents).toFixed(0)}/dozen</Text>
+          <Text style={styles.unitPrice}>
+            ETB {item.price_per_dozen_cents.toFixed(0)}/dozen
+          </Text>
           <View style={styles.qtyRow}>
             <Pressable
               style={styles.qtyBtn}
@@ -345,8 +454,12 @@ export default function SalesScreen() {
                   prev.map((cart) => ({
                     ...cart,
                     items: cart.items.map((it) =>
-                      it.productId === item.productId && it.qty_pieces > item.pack_size
-                        ? { ...it, qty_pieces: it.qty_pieces - item.pack_size }
+                      it.productId === item.productId &&
+                      it.qty_pieces > item.pack_size
+                        ? {
+                            ...it,
+                            qty_pieces: it.qty_pieces - item.pack_size,
+                          }
                         : it
                     ),
                   }))
@@ -364,7 +477,10 @@ export default function SalesScreen() {
                     ...cart,
                     items: cart.items.map((it) =>
                       it.productId === item.productId
-                        ? { ...it, qty_pieces: it.qty_pieces + item.pack_size }
+                        ? {
+                            ...it,
+                            qty_pieces: it.qty_pieces + item.pack_size,
+                          }
                         : it
                     ),
                   }))
@@ -374,7 +490,9 @@ export default function SalesScreen() {
               <Text style={styles.qtyBtnText}>＋</Text>
             </Pressable>
           </View>
-          <Text style={styles.itemTotal}>ETB {(lineCents).toFixed(2)}</Text>
+          <Text style={styles.itemTotal}>
+            ETB {lineCents.toFixed(2)}
+          </Text>
         </View>
       );
     },
@@ -414,10 +532,14 @@ export default function SalesScreen() {
             isCompleteDisabled={isCompleteDisabled}
             history={history}
             handleDeleteSale={handleDeleteSale}
-            onSelectSale={setSelectedSale} // pass modal setter
+            onSelectSale={setSelectedSale}
           />
         }
         keyboardShouldPersistTaps="handled"
+        // ✅ Pull-to-refresh
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       />
 
       {/* Sale Details Modal */}
@@ -433,7 +555,9 @@ export default function SalesScreen() {
               {selectedSale?.customerName ?? "Cash Sale"}
             </Text>
             <Text style={styles.modalSub}>
-              {dayjs(selectedSale?.createdAt).format("YYYY-MM-DD HH:mm")}
+              {dayjs(selectedSale?.createdAt).format(
+                "YYYY-MM-DD HH:mm"
+              )}
             </Text>
 
             <ScrollView style={{ marginTop: 12 }}>
@@ -441,12 +565,17 @@ export default function SalesScreen() {
                 <View key={it.id}>
                   <View style={styles.detailCard}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.detailName}>{it.product.name}</Text>
+                      <Text style={styles.detailName}>
+                        {it.product.name}
+                      </Text>
                       <Text style={styles.detailQty}>
-                        {it.dozens} dozen × ETB {it.product.pricePerDozen.toFixed(2)}
+                        {it.dozens} dozen × ETB{" "}
+                        {it.product.pricePerDozen.toFixed(2)}
                       </Text>
                     </View>
-                    <Text style={styles.detailTotal}>{money(it.lineTotalCents)}</Text>
+                    <Text style={styles.detailTotal}>
+                      {money(it.lineTotalCents)}
+                    </Text>
                   </View>
                   {idx < selectedSale.items.length - 1 && (
                     <View style={styles.separator} />
@@ -464,8 +593,13 @@ export default function SalesScreen() {
               </View>
             </View>
 
-            <Pressable style={styles.closeBtn} onPress={() => setSelectedSale(null)}>
-              <Text style={{ color: "#fff", fontWeight: "700" }}>Close</Text>
+            <Pressable
+              style={styles.closeBtn}
+              onPress={() => setSelectedSale(null)}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700" }}>
+                Close
+              </Text>
             </Pressable>
           </View>
         </View>
