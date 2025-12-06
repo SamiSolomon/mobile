@@ -1,5 +1,5 @@
 // src/screens/FinanceTabs/FinanceScreen.tsx
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   TextInput,
   Modal,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import PagerView from "react-native-pager-view";
 import dayjs from "dayjs";
+import { useFocusEffect } from "expo-router";
 
 // 🔹 Import DB helper
 import { listCreditSales } from "../db/sales";
@@ -40,7 +42,9 @@ function FinanceMetrics({ creditSales, lent, borrowed }: any) {
     () => borrowed.reduce((sum: number, r: any) => sum + r.amount, 0),
     [borrowed]
   );
-  const borrowedUnpaid = borrowed.filter((r: any) => r.status !== "paid").length;
+  const borrowedUnpaid = borrowed.filter(
+    (r: any) => r.status !== "paid"
+  ).length;
 
   const metrics = [
     {
@@ -81,9 +85,15 @@ function FinanceMetrics({ creditSales, lent, borrowed }: any) {
             key={m.label}
             style={[styles.carouselCard, { backgroundColor: m.bg }]}
           >
-            <MaterialCommunityIcons name={m.icon as any} size={28} color={m.color} />
+            <MaterialCommunityIcons
+              name={m.icon as any}
+              size={28}
+              color={m.color}
+            />
             <Text style={styles.metricLabel}>{m.label}</Text>
-            <Text style={[styles.metricValue, { color: m.color }]}>{m.value}</Text>
+            <Text style={[styles.metricValue, { color: m.color }]}>
+              {m.value}
+            </Text>
             <Text style={styles.metricSub}>{m.sub}</Text>
           </View>
         ))}
@@ -93,7 +103,10 @@ function FinanceMetrics({ creditSales, lent, borrowed }: any) {
         {metrics.map((_, i) => (
           <View
             key={i}
-            style={[styles.dot, page === i ? styles.dotActive : styles.dotInactive]}
+            style={[
+              styles.dot,
+              page === i ? styles.dotActive : styles.dotInactive,
+            ]}
           />
         ))}
       </View>
@@ -122,20 +135,32 @@ function FocusableInput({
   );
 }
 
-// ---------- Credit Sales Tab (with modal + mark paid / delete) ----------
+// ---------- Credit Sales Tab (with modal + mark paid / delete + pull-to-refresh) ----------
 function CreditSalesTab({
   records,
   setRecords,
+  onRefresh,
 }: {
   records: any[];
   setRecords: React.Dispatch<React.SetStateAction<any[]>>;
+  onRefresh?: () => Promise<void> | void;
 }) {
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const birr = (cents: number) => `ETB ${(cents / 100).toFixed(2)}`;
+
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+    setRefreshing(true);
+    await onRefresh();
+    setRefreshing(false);
+  };
 
   const markPaid = (id: string | number) => {
     setRecords((prev) =>
-      prev.map((r: any) => (r.id === id ? { ...r, paidCents: r.totalCents } : r))
+      prev.map((r: any) =>
+        r.id === id ? { ...r, paidCents: r.totalCents } : r
+      )
     );
   };
 
@@ -153,7 +178,11 @@ function CreditSalesTab({
             style={[styles.actionBtn, { backgroundColor: "#1A73E8" }]}
             onPress={() => markPaid(item.id)}
           >
-            <MaterialCommunityIcons name="check-circle-outline" size={16} color="#fff" />
+            <MaterialCommunityIcons
+              name="check-circle-outline"
+              size={16}
+              color="#fff"
+            />
             <Text style={styles.actionBtnText}>Mark Paid</Text>
           </Pressable>
         ) : (
@@ -161,7 +190,11 @@ function CreditSalesTab({
             style={[styles.actionBtn, { backgroundColor: "#DC2626" }]}
             onPress={() => deleteRecord(item.id)}
           >
-            <MaterialCommunityIcons name="trash-can-outline" size={16} color="#fff" />
+            <MaterialCommunityIcons
+              name="trash-can-outline"
+              size={16}
+              color="#fff"
+            />
             <Text style={styles.actionBtnText}>Delete</Text>
           </Pressable>
         )}
@@ -181,8 +214,12 @@ function CreditSalesTab({
             <Pressable onPress={() => setSelectedSale(item)}>
               <View style={styles.listCard}>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={styles.name}>{item.customerName ?? "Unknown"}</Text>
+                  <View
+                    style={{ flexDirection: "row", alignItems: "center" }}
+                  >
+                    <Text style={styles.name}>
+                      {item.customerName ?? "Unknown"}
+                    </Text>
                     <View
                       style={[
                         styles.statusBadge,
@@ -199,7 +236,12 @@ function CreditSalesTab({
                   </Text>
                 </View>
 
-                <View style={{ alignItems: "flex-end", justifyContent: "center" }}>
+                <View
+                  style={{
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                  }}
+                >
                   <Text
                     style={[
                       styles.amount,
@@ -214,9 +256,12 @@ function CreditSalesTab({
             </Pressable>
           );
         }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
       />
 
-      {/* Modal for credit sale details (Total only, and Mark Paid same size as Close) */}
+      {/* Modal for credit sale details */}
       <Modal
         visible={!!selectedSale}
         transparent
@@ -233,7 +278,8 @@ function CreditSalesTab({
             </Text>
 
             <ScrollView style={{ marginTop: 12 }}>
-              {Array.isArray(selectedSale?.items) && selectedSale.items.length > 0 ? (
+              {Array.isArray(selectedSale?.items) &&
+              selectedSale.items.length > 0 ? (
                 selectedSale.items.map((it: any, idx: number) => (
                   <View key={it.id ?? idx}>
                     <View style={styles.detailCard}>
@@ -244,7 +290,9 @@ function CreditSalesTab({
                         <Text style={styles.detailQty}>
                           {it?.dozens ?? 0} dozen
                           {it?.product?.pricePerDozen != null
-                            ? ` × ETB ${Number(it.product.pricePerDozen).toFixed(2)}`
+                            ? ` × ETB ${Number(
+                                it.product.pricePerDozen
+                              ).toFixed(2)}`
                             : ""}
                         </Text>
                       </View>
@@ -258,8 +306,12 @@ function CreditSalesTab({
                   </View>
                 ))
               ) : (
-                <View style={[styles.detailCard, { backgroundColor: "#fff" }]}>
-                  <Text style={styles.detailQty}>No item details available.</Text>
+                <View
+                  style={[styles.detailCard, { backgroundColor: "#fff" }]}
+                >
+                  <Text style={styles.detailQty}>
+                    No item details available.
+                  </Text>
                 </View>
               )}
             </ScrollView>
@@ -274,13 +326,19 @@ function CreditSalesTab({
               </View>
             </View>
 
-            {/* Modal actions (Mark Paid/Delete now same size as Close by reusing closeBtn style) */}
+            {/* Modal actions */}
             <View style={{ flexDirection: "row", gap: 16, marginTop: 12 }}>
-              {((selectedSale?.paidCents ?? 0) < (selectedSale?.totalCents ?? 0)) ? (
+              {(selectedSale?.paidCents ?? 0) <
+              (selectedSale?.totalCents ?? 0) ? (
                 <Pressable
                   style={[
-                    styles.closeBtn,                       // reuse size
-                    { backgroundColor: "#1A73E8", flex: 1, flexDirection: "row", justifyContent: "center" }
+                    styles.closeBtn,
+                    {
+                      backgroundColor: "#1A73E8",
+                      flex: 1,
+                      flexDirection: "row",
+                      justifyContent: "center",
+                    },
                   ]}
                   onPress={() => {
                     markPaid(selectedSale!.id);
@@ -289,21 +347,46 @@ function CreditSalesTab({
                     );
                   }}
                 >
-                  <MaterialCommunityIcons name="check-circle-outline" size={16} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "700", marginLeft: 6 }}>
+                  <MaterialCommunityIcons
+                    name="check-circle-outline"
+                    size={16}
+                    color="#fff"
+                  />
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontWeight: "700",
+                      marginLeft: 6,
+                    }}
+                  >
                     Mark Paid
                   </Text>
                 </Pressable>
               ) : (
                 <Pressable
                   style={[
-                    styles.closeBtn,                       // reuse size
-                    { backgroundColor: "#DC2626", flex: 1, flexDirection: "row", justifyContent: "center" }
+                    styles.closeBtn,
+                    {
+                      backgroundColor: "#DC2626",
+                      flex: 1,
+                      flexDirection: "row",
+                      justifyContent: "center",
+                    },
                   ]}
                   onPress={() => deleteRecord(selectedSale!.id)}
                 >
-                  <MaterialCommunityIcons name="trash-can-outline" size={16} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "700", marginLeft: 6 }}>
+                  <MaterialCommunityIcons
+                    name="trash-can-outline"
+                    size={16}
+                    color="#fff"
+                  />
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontWeight: "700",
+                      marginLeft: 6,
+                    }}
+                  >
                     Delete
                   </Text>
                 </Pressable>
@@ -361,10 +444,27 @@ function MoneyLentTab({ records, setRecords }: any) {
     <FlatList
       ListHeaderComponent={
         <View style={styles.form}>
-          <FocusableInput placeholder="Enter full name" value={name} onChangeText={setName} />
-          <FocusableInput placeholder="Enter phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <FocusableInput placeholder="Amount" value={amount} onChangeText={setAmount} keyboardType="numeric" />
-          <Pressable style={[styles.addBtn, { backgroundColor: "#1A73E8" }]} onPress={addRecord}>
+          <FocusableInput
+            placeholder="Enter full name"
+            value={name}
+            onChangeText={setName}
+          />
+          <FocusableInput
+            placeholder="Enter phone number"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+          />
+          <FocusableInput
+            placeholder="Amount"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+          />
+          <Pressable
+            style={[styles.addBtn, { backgroundColor: "#1A73E8" }]}
+            onPress={addRecord}
+          >
             <Text style={styles.addBtnText}>+ Record Lent Money</Text>
           </Pressable>
         </View>
@@ -376,34 +476,78 @@ function MoneyLentTab({ records, setRecords }: any) {
         <View style={styles.listCard}>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <MaterialCommunityIcons name="account-outline" size={18} color="#374151" />
+              <MaterialCommunityIcons
+                name="account-outline"
+                size={18}
+                color="#374151"
+              />
               <Text style={styles.name}>{item.name}</Text>
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: item.status === "paid" ? "#16A34A" : "#EA580C" },
+                  {
+                    backgroundColor:
+                      item.status === "paid" ? "#16A34A" : "#EA580C",
+                  },
                 ]}
               >
                 <Text style={styles.statusText}>{item.status}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: "row", marginTop: 4, alignItems: "center" }}>
-              <MaterialCommunityIcons name="phone" size={14} color="#6B7280" />
+            <View
+              style={{
+                flexDirection: "row",
+                marginTop: 4,
+                alignItems: "center",
+              }}
+            >
+              <MaterialCommunityIcons
+                name="phone"
+                size={14}
+                color="#6B7280"
+              />
               <Text style={styles.meta}>{item.phone}</Text>
-              <MaterialCommunityIcons name="calendar" size={14} color="#6B7280" style={{ marginLeft: 10 }} />
+              <MaterialCommunityIcons
+                name="calendar"
+                size={14}
+                color="#6B7280"
+                style={{ marginLeft: 10 }}
+              />
               <Text style={styles.meta}>{item.date}</Text>
             </View>
           </View>
           <View style={{ alignItems: "flex-end", justifyContent: "center" }}>
-            <Text style={styles.amount}>ETB {item.amount.toFixed(2)}</Text>
+            <Text style={styles.amount}>
+              ETB {item.amount.toFixed(2)}
+            </Text>
             {item.status !== "paid" ? (
-              <Pressable style={[styles.actionBtn, { backgroundColor: "#1A73E8" }]} onPress={() => markPaid(item.id)}>
-                <MaterialCommunityIcons name="check-circle-outline" size={16} color="#fff" />
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: "#1A73E8" },
+                ]}
+                onPress={() => markPaid(item.id)}
+              >
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={16}
+                  color="#fff"
+                />
                 <Text style={styles.actionBtnText}>Mark Paid</Text>
               </Pressable>
             ) : (
-              <Pressable style={[styles.actionBtn, { backgroundColor: "#DC2626" }]} onPress={() => deleteRecord(item.id)}>
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#fff" />
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: "#DC2626" },
+                ]}
+                onPress={() => deleteRecord(item.id)}
+              >
+                <MaterialCommunityIcons
+                  name="trash-can-outline"
+                  size={16}
+                  color="#fff"
+                />
                 <Text style={styles.actionBtnText}>Delete</Text>
               </Pressable>
             )}
@@ -452,11 +596,30 @@ function MoneyBorrowedTab({ records, setRecords }: any) {
     <FlatList
       ListHeaderComponent={
         <View style={styles.form}>
-          <FocusableInput placeholder="Enter lender name" value={lender} onChangeText={setLender} />
-          <FocusableInput placeholder="Enter phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <FocusableInput placeholder="Amount Borrowed" value={amount} onChangeText={setAmount} keyboardType="numeric" />
-          <Pressable style={[styles.addBtn, { backgroundColor: "#EF5350" }]} onPress={addRecord}>
-            <Text style={styles.addBtnText}>+ Record Borrowed Money</Text>
+          <FocusableInput
+            placeholder="Enter lender name"
+            value={lender}
+            onChangeText={setLender}
+          />
+          <FocusableInput
+            placeholder="Enter phone number"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+          />
+          <FocusableInput
+            placeholder="Amount Borrowed"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+          />
+          <Pressable
+            style={[styles.addBtn, { backgroundColor: "#EF5350" }]}
+            onPress={addRecord}
+          >
+            <Text style={styles.addBtnText}>
+              + Record Borrowed Money
+            </Text>
           </Pressable>
         </View>
       }
@@ -467,34 +630,78 @@ function MoneyBorrowedTab({ records, setRecords }: any) {
         <View style={styles.listCard}>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <MaterialCommunityIcons name="account-outline" size={18} color="#374151" />
+              <MaterialCommunityIcons
+                name="account-outline"
+                size={18}
+                color="#374151"
+              />
               <Text style={styles.name}>{item.name}</Text>
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: item.status === "paid" ? "#16A34A" : "#DC2626" },
+                  {
+                    backgroundColor:
+                      item.status === "paid" ? "#16A34A" : "#DC2626",
+                  },
                 ]}
               >
                 <Text style={styles.statusText}>{item.status}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: "row", marginTop: 4, alignItems: "center" }}>
-              <MaterialCommunityIcons name="phone" size={14} color="#6B7280" />
+            <View
+              style={{
+                flexDirection: "row",
+                marginTop: 4,
+                alignItems: "center",
+              }}
+            >
+              <MaterialCommunityIcons
+                name="phone"
+                size={14}
+                color="#6B7280"
+              />
               <Text style={styles.meta}>{item.phone}</Text>
-              <MaterialCommunityIcons name="calendar" size={14} color="#6B7280" style={{ marginLeft: 10 }} />
+              <MaterialCommunityIcons
+                name="calendar"
+                size={14}
+                color="#6B7280"
+                style={{ marginLeft: 10 }}
+              />
               <Text style={styles.meta}>{item.date}</Text>
             </View>
           </View>
           <View style={{ alignItems: "flex-end", justifyContent: "center" }}>
-            <Text style={styles.amount}>ETB {item.amount.toFixed(2)}</Text>
+            <Text style={styles.amount}>
+              ETB {item.amount.toFixed(2)}
+            </Text>
             {item.status !== "paid" ? (
-              <Pressable style={[styles.actionBtn, { backgroundColor: "#1A73E8" }]} onPress={() => markPaid(item.id)}>
-                <MaterialCommunityIcons name="check-circle-outline" size={16} color="#fff" />
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: "#1A73E8" },
+                ]}
+                onPress={() => markPaid(item.id)}
+              >
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={16}
+                  color="#fff"
+                />
                 <Text style={styles.actionBtnText}>Mark Paid</Text>
               </Pressable>
             ) : (
-              <Pressable style={[styles.actionBtn, { backgroundColor: "#DC2626" }]} onPress={() => deleteRecord(item.id)}>
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#fff" />
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: "#DC2626" },
+                ]}
+                onPress={() => deleteRecord(item.id)}
+              >
+                <MaterialCommunityIcons
+                  name="trash-can-outline"
+                  size={16}
+                  color="#fff"
+                />
                 <Text style={styles.actionBtnText}>Delete</Text>
               </Pressable>
             )}
@@ -513,14 +720,31 @@ export default function FinanceScreen() {
   const [lent, setLent] = useState<any[]>([]);
   const [borrowed, setBorrowed] = useState<any[]>([]);
 
-  useEffect(() => {
-    const sales = listCreditSales();
+  // ✅ wrap DB load in useCallback so we can also use it on focus / refresh
+  const loadCreditSales = useCallback(async () => {
+    const sales = await listCreditSales();
     setCreditSales(sales);
   }, []);
 
+  useEffect(() => {
+    loadCreditSales();
+  }, [loadCreditSales]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCreditSales();
+    }, [loadCreditSales])
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 4,
+        }}
+      >
         <Text style={styles.title}>Credit Management</Text>
         <Text style={styles.subtitle}>
           Track credit sales, money lent, and borrowed funds
@@ -528,17 +752,31 @@ export default function FinanceScreen() {
       </View>
 
       <View style={{ marginBottom: 20 }}>
-        <FinanceMetrics creditSales={creditSales} lent={lent} borrowed={borrowed} />
+        <FinanceMetrics
+          creditSales={creditSales}
+          lent={lent}
+          borrowed={borrowed}
+        />
       </View>
 
       <Tab.Navigator
         screenOptions={({ route }) => ({
-          tabBarStyle: { backgroundColor: "transparent", elevation: 0 },
+          tabBarStyle: {
+            backgroundColor: "transparent",
+            elevation: 0,
+          },
           tabBarIndicatorStyle: { backgroundColor: "transparent" },
           tabBarItemStyle: { marginHorizontal: 4 },
           tabBarLabel: ({ focused }) => (
-            <View style={[styles.pill, focused ? styles.pillActive : styles.pillInactive]}>
-              <Text style={focused ? styles.pillTextActive : styles.pillText}>
+            <View
+              style={[
+                styles.pill,
+                focused ? styles.pillActive : styles.pillInactive,
+              ]}
+            >
+              <Text
+                style={focused ? styles.pillTextActive : styles.pillText}
+              >
                 {route.name}
               </Text>
             </View>
@@ -550,14 +788,22 @@ export default function FinanceScreen() {
             <CreditSalesTab
               records={creditSales}
               setRecords={setCreditSales}
+              onRefresh={loadCreditSales} // ✅ pull-to-refresh reloads from DB
             />
           )}
         </Tab.Screen>
         <Tab.Screen name="Money Lent">
-          {() => <MoneyLentTab records={lent} setRecords={setLent} />}
+          {() => (
+            <MoneyLentTab records={lent} setRecords={setLent} />
+          )}
         </Tab.Screen>
         <Tab.Screen name="Loan In">
-          {() => <MoneyBorrowedTab records={borrowed} setRecords={setBorrowed} />}
+          {() => (
+            <MoneyBorrowedTab
+              records={borrowed}
+              setRecords={setBorrowed}
+            />
+          )}
         </Tab.Screen>
       </Tab.Navigator>
     </View>
@@ -582,7 +828,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  metricLabel: { fontSize: 14, fontWeight: "600", color: "#374151", marginTop: 6 },
+  metricLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 6,
+  },
   metricValue: { fontSize: 24, fontWeight: "800", marginTop: 4 },
   metricSub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
 
@@ -591,11 +842,28 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: "#16A34A" },
   dotInactive: { backgroundColor: "#D1D5DB" },
 
-  form: { backgroundColor: "#fff", padding: 12, borderRadius: 10, marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 6, padding: 10, marginBottom: 8, fontSize: 14 },
+  form: {
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 8,
+    fontSize: 14,
+  },
   inputFocused: { borderColor: "#16A34A", borderWidth: 2 },
 
-  addBtn: { paddingVertical: 10, borderRadius: 6, alignItems: "center", marginBottom: 12 },
+  addBtn: {
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: "center",
+    marginBottom: 12,
+  },
   addBtnText: { color: "#fff", fontWeight: "700" },
 
   listCard: {
@@ -610,7 +878,12 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
   },
-  name: { fontWeight: "600", fontSize: 15, color: "#111827", marginLeft: 0 },
+  name: {
+    fontWeight: "600",
+    fontSize: 15,
+    color: "#111827",
+    marginLeft: 0,
+  },
   meta: { fontSize: 12, color: "#6B7280", marginLeft: 0 },
   amount: { fontSize: 16, fontWeight: "700", marginTop: 4 },
 
@@ -632,7 +905,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     minWidth: 64,
   },
-  actionBtnText: { color: "#fff", fontSize: 12, fontWeight: "600", marginLeft: 4 },
+  actionBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
 
   pill: {
     paddingVertical: 8,
@@ -692,8 +970,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginVertical: 2,
   },
-  summaryLabel: { fontSize: 14, fontWeight: "600", color: "#374151" },
-  summaryValue: { fontSize: 14, fontWeight: "700", color: "#111827" },
+  summaryLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
 
   closeBtn: {
     marginTop: 16,
@@ -703,3 +989,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 });
+
