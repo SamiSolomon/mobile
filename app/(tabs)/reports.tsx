@@ -1,4 +1,9 @@
-import React, { useEffect, useState, ComponentProps } from "react";
+import React, {
+  useEffect,
+  useState,
+  ComponentProps,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
@@ -10,9 +15,11 @@ import {
   TextInput,
   Alert,
   TouchableOpacity,
+  RefreshControl,
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useClerk } from "@clerk/clerk-expo";
+import { useFocusEffect } from "expo-router";
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 import { getSalesWithDetails } from "../db/sales";
@@ -34,12 +41,16 @@ export default function ReportsScreen() {
   const { signOut } = useClerk();
   const [sales, setSales] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [range, setRange] = useState<"today" | "week" | "month" | "year">("today");
+  const [range, setRange] = useState<"today" | "week" | "month" | "year">(
+    "today"
+  );
   const [selectedSale, setSelectedSale] = useState<any | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // ✅ for pull-to-refresh
 
-  useEffect(() => {
+  // ✅ Centralized function to load + filter + compute metrics
+  const loadData = useCallback(() => {
     const allSales = getSalesWithDetails();
     const now = dayjs();
     let start = now.startOf("day");
@@ -84,7 +95,9 @@ export default function ReportsScreen() {
       );
     }, 0);
     const avgSale = totalSales / filtered.length;
-    const customers = new Set(filtered.map((s) => s.customerName ?? "Cash")).size;
+    const customers = new Set(
+      filtered.map((s) => s.customerName ?? "Cash")
+    ).size;
 
     setMetrics([
       {
@@ -118,10 +131,29 @@ export default function ReportsScreen() {
     ]);
   }, [range, customerSearch]);
 
+  // ✅ Run when range or customer search changes
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ✅ Auto-refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  // ✅ Pull-to-refresh handler
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData();
+    setRefreshing(false);
+  }, [loadData]);
+
   const handleSignOut = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Logout", style: "destructive", onPress: ()=> signOut() },
+      { text: "Logout", style: "destructive", onPress: () => signOut() },
     ]);
   };
 
@@ -175,19 +207,25 @@ export default function ReportsScreen() {
         />
         {customerSearch.length > 0 && (
           <Pressable onPress={() => setCustomerSearch("")}>
-            <MaterialCommunityIcons name="close-circle" size={20} color="#9CA3AF" />
+            <MaterialCommunityIcons
+              name="close-circle"
+              size={20}
+              color="#9CA3AF"
+            />
           </Pressable>
         )}
       </View>
 
-            {/* Metrics (only when no search input) */}
+      {/* Metrics (only when no search input) */}
       {customerSearch.trim().length === 0 && (
         <View style={styles.grid}>
           {metrics.map((m) => (
             <View key={m.label} style={styles.card}>
               <MaterialCommunityIcons name={m.icon} size={22} color={m.color} />
               <Text style={styles.metricLabel}>{m.label}</Text>
-              <Text style={[styles.metricValue, { color: m.color }]}>{m.value}</Text>
+              <Text style={[styles.metricValue, { color: m.color }]}>
+                {m.value}
+              </Text>
               {m.sub && <Text style={styles.metricSub}>{m.sub}</Text>}
             </View>
           ))}
@@ -218,6 +256,10 @@ export default function ReportsScreen() {
             </Text>
           </Pressable>
         )}
+        // ✅ Pull-to-refresh on this screen
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       />
 
       {/* Modal for Sale Details */}
@@ -244,7 +286,8 @@ export default function ReportsScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.detailName}>{it.product.name}</Text>
                       <Text style={styles.detailQty}>
-                        {it.dozens} dozen × ETB {it.product.pricePerDozen.toFixed(2)}
+                        {it.dozens} dozen × ETB{" "}
+                        {it.product.pricePerDozen.toFixed(2)}
                       </Text>
                     </View>
                     <Text style={styles.detailTotal}>
@@ -269,7 +312,10 @@ export default function ReportsScreen() {
             </View>
 
             {/* Close */}
-            <Pressable style={styles.closeBtn} onPress={() => setSelectedSale(null)}>
+            <Pressable
+              style={styles.closeBtn}
+              onPress={() => setSelectedSale(null)}
+            >
               <Text style={{ color: "#fff", fontWeight: "700" }}>Close</Text>
             </Pressable>
           </View>
